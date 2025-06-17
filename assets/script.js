@@ -16,6 +16,7 @@ jQuery(document).ready(function($) {
     };
     let isBlockCheckout = $('.wc-block-checkout').length > 0;
     let verificationBoxCreated = false;
+    let warningMessageCreated = false;
     
     console.log('COD Verifier: Checkout type:', isBlockCheckout ? 'Blocks' : 'Classic');
     
@@ -381,6 +382,109 @@ jQuery(document).ready(function($) {
         }
     }
     
+    // ===== NEW WARNING MESSAGE FUNCTIONS =====
+    
+    function createWarningMessage() {
+        if (warningMessageCreated) {
+            return $('#cod-verification-warning-active');
+        }
+        
+        // Create the warning message HTML
+        const warningHTML = `
+            <div id="cod-verification-warning-active" class="cod-verification-warning" style="display: none;">
+                <div class="cod-warning-content">
+                    <span class="cod-warning-icon">⚠️</span>
+                    <span class="cod-warning-text">Please complete verification before placing the order.</span>
+                </div>
+            </div>
+        `;
+        
+        // Find insertion point AFTER the actions container
+        let $insertionPoint = null;
+        
+        if (isBlockCheckout) {
+            const blockSelectors = [
+                '.wc-block-checkout__actions_row',
+                '.wc-block-components-checkout-place-order-button',
+                '.wp-block-woocommerce-checkout-order-summary-block'
+            ];
+            
+            for (let selector of blockSelectors) {
+                $insertionPoint = $(selector).first();
+                if ($insertionPoint.length > 0) {
+                    console.log('COD Verifier: Found warning insertion point:', selector);
+                    break;
+                }
+            }
+        } else {
+            const classicSelectors = [
+                '#order_review',
+                '.woocommerce-checkout-review-order',
+                '#place_order'
+            ];
+            
+            for (let selector of classicSelectors) {
+                $insertionPoint = $(selector).first();
+                if ($insertionPoint.length > 0) {
+                    console.log('COD Verifier: Found warning insertion point:', selector);
+                    break;
+                }
+            }
+        }
+        
+        if ($insertionPoint && $insertionPoint.length > 0) {
+            $insertionPoint.after(warningHTML);
+            warningMessageCreated = true;
+            console.log('COD Verifier: Warning message created');
+            return $('#cod-verification-warning-active');
+        } else {
+            console.error('COD Verifier: No suitable insertion point found for warning message');
+            return $();
+        }
+    }
+    
+    function updateVerificationWarning() {
+        const selectedMethod = getSelectedPaymentMethod();
+        const isCODSelected = selectedMethod === 'cod' || selectedMethod === 'cash_on_delivery';
+        
+        // Create warning message if it doesn't exist
+        let $warningMessage = $('#cod-verification-warning-active');
+        if ($warningMessage.length === 0) {
+            $warningMessage = createWarningMessage();
+        }
+        
+        if ($warningMessage.length === 0) {
+            return; // Could not create warning message
+        }
+        
+        if (isCODSelected) {
+            // Check if verification is complete
+            let verificationComplete = true;
+            
+            if (codVerifier.enableOTP === '1' && !window.codVerifierStatus.otpVerified) {
+                verificationComplete = false;
+            }
+            
+            if (codVerifier.enableToken === '1' && (!window.codVerifierStatus.tokenVerified || !$('#cod_token_confirmed').is(':checked'))) {
+                verificationComplete = false;
+            }
+            
+            if (verificationComplete) {
+                // Hide warning message
+                $warningMessage.fadeOut(300);
+                console.log('COD Verifier: Warning message hidden - verification complete');
+            } else {
+                // Show warning message
+                $warningMessage.fadeIn(300);
+                console.log('COD Verifier: Warning message shown - verification incomplete');
+            }
+        } else {
+            // Hide warning message for non-COD methods
+            $warningMessage.fadeOut(300);
+            console.log('COD Verifier: Warning message hidden - non-COD selected');
+        }
+    }
+    
     function updateHiddenFields() {
         $('input[name="cod_otp_verified"]').remove();
         $('input[name="cod_token_verified"]').remove();
@@ -419,6 +523,7 @@ jQuery(document).ready(function($) {
 
         updateHiddenFields();
         updatePlaceOrderButtonState(); // Update button state after verification status changes
+        updateVerificationWarning(); // Update warning message visibility
     }
     
     function showMessage(type, message, status) {
@@ -470,6 +575,9 @@ jQuery(document).ready(function($) {
             $placeOrderButton.prop('disabled', false).removeClass('disabled');
             console.log('COD Verifier: Non-COD selected, enabling place order button.');
         }
+        
+        // Update warning message after button state change
+        updateVerificationWarning();
     }
     
     // ===== PAYMENT METHOD HANDLING =====
